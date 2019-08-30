@@ -1,4 +1,4 @@
-# Hyperparameter TuneRs
+# Ensemblizer
 
 **ensemblizer** is a small package for various ensemble methods
 
