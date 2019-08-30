@@ -52,36 +52,126 @@ class ModelCollection:
             slice = 0
         for model_col in self.tqdm(range(self.num_models), disable=(not verbose)):
             if model_col == 0:
-                prob_array = self.model_list[model_col].predict_proba(self.__get_X(X, model_col))[:,slice:]
+                try:
+                    prob_array = self.model_list[model_col].predict_proba(self.__get_X(X, model_col))[:,slice:]
+                except:
+                    prob_array = self.model_list[model_col].predict(self.__get_X(X, model_col))
             else:
-                temp_array = self.model_list[model_col].predict_proba(self.__get_X(X, model_col))[:,slice:]
+                try:
+                    temp_array = self.model_list[model_col].predict_proba(self.__get_X(X, model_col))[:,slice:]
+                except:
+                    temp_array = self.model_list[model_col].predict(self.__get_X(X, model_col))
                 prob_array = self.np.hstack((prob_array, temp_array))
         return prob_array
 
     def __sort_params(self, param_dict, skip_unknown=False):
-        param_list = [dict()]*self.num_models
+        param_list = [dict() for _ in range(self.num_models)]
         for key, value in param_dict.items():
-            model_name = key.split('__')[0]
-            param_name = key.split('__')[1]
-            try:
-                name_index = self.name_list.index(model_name)
-                param_list[name_index][param_name] = value
-            except:
-                if not skip_unknown:
-                    raise ValueError(f"{model_name} not a valid model name.")
+            split = key.split('__')
+            if [key]==split and not skip_unknown:
+                raise ValueError(f"{key} is not a valid hyperparameter.")
+            elif [key]!=split:
+                model_name = split[0]
+                param_name = split[1]
+                try:
+                    name_index = self.name_list.index(model_name)
+                    param_list[name_index][param_name] = value
+                except:
+                    if not skip_unknown:
+                        raise ValueError(f"{model_name} not a valid model name.")
         return param_list
 
-    def set_params(self, params, skip_unknown=False):
+    def set_params(self, skip_unknown=False, **params):
         if type(params)==dict:
             params = self.__sort_params(params, skip_unknown=skip_unknown)
-        for index, param_dict in enumerate(params):
-            if bool(param_dict):
-                self.model_list[index].set_params(param_dict)
+        for index in range(len(params)):
+            if bool(params[index]):
+                self.model_list[index].set_params(**params[index])
         return self.model_list
 
 class CatEnsemble:
 
-    def __init__(self, ):
+    def __init__(self, models, ensemble_model, weights=None, stack_data=False, use_probs=True,
+                 train_collection=False):
+        import numpy as np
+        self.np = np
+        if type(models)==list:
+            self.models = ModelCollection(models)
+        else:
+            self.models = models
+        if weights is None:
+            self.weights = [1.0]*self.models.num_models
+        else:
+            self.weights = weights
+        self.ensemble_model = ensemble_model
+        self.stack_data = stack_data
+        self.use_probs = use_probs
+        self.ensemble_params = dict()
+        self.stored_X = None
+        self.train_collection = train_collection
+
+    def set_ensemble_params(self, models=None, ensemble_model=None, weights=None, include_data=None, use_probs=None,
+                            train_collection=None, reset_stored=False):
+        if models is not None:
+            self.models = models
+        if ensemble_model is not None:
+            self.ensemble_model = ensemble_model
+        if weights is not None:
+            self.weights = weights
+        if include_data is not None:
+            self.include_data = include_data
+        if use_probs is not None:
+            self.use_probs = use_probs
+        if train_collection is not None:
+            self.train_collection = train_collection
+        if reset_stored:
+            self.stored_X = None
+
+    def fit(self, X, y, return_preds=False):
+        if self.train_collection:
+            self.models.fit(X, y)
+            X_base = self.__base_array(X)
+        if (not self.train_collection) and (self.stored_X is not None):
+            X_base = self.stored_X
+        else:
+            X_base = self.__base_array(X)
+            self.stored_X = X_base
+        self.ensemble_model.fit(X_base, y)
+        if return_preds:
+            return self.ensemble_model.predict(X_base)
+        else:
+            return self.ensemble_model
+
+    def __base_array(self, X):
+        if self.use_probs:
+            base_array = self.models.predict_proba(X)
+        else:
+            base_array = self.models.predict(X)
+        base_array = base_array*self.weights
+        if self.stack_data:
+            base_array = self.np.hstack((base_array, X))
+        return base_array
+
+    def set_params(self, skip_unknown=False, **params):
+        collection_dict = dict()
+        ensemble_dict = dict()
+        for key, value in params.items():
+            if [key]==key.split('__'):
+                ensemble_dict[key] = value
+            else:
+                collection_dict[key] = value
+        self.models.set_params(skip_unknown=skip_unknown, **collection_dict)
+        self.ensemble_model.set_params(**ensemble_dict)
+
+    def predict(self, X):
+        X_base = self.__base_array(X)
+        return self.ensemble_model.predict(X_base)
+
+    def predict_proba(self, X):
+        X_base = self.__base_array(X)
+        return self.predict_proba(X_base)
+
+
 '''
 class PretrainedCatEnsemble:
     def __init__(self, model_list, ensemble_model=None, weights=None, include_data=False, use_probs=True):
