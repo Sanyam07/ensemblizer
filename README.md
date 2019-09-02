@@ -8,7 +8,7 @@
 
 Hyperparameters can be trained like any other scikit-learn-esque model.  When setting parameters for the ensemble model, parameters that begin with *name__* will set the hyperparameter of the *name* model in the collection or ensemble model (default name for ensemble model is "ensemble").  Parameters that start with *__name* will update the weight of the *name* model in the collection.  This allows the weighting scheme of the ensemble to be tuned with all other parameters using any scikit-learn tuning package.
 
-## Current Version is v0.03
+## Current Version is v0.04
 
 This package is currently in the beginning stages but future work is planned.
 
