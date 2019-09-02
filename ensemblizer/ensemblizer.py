@@ -98,7 +98,7 @@ class ModelCollection:
 class CatEnsemble:
 
     def __init__(self, models, ensemble_model, weights=None, name="ensemble", stack_data=False, use_probs=True,
-                 train_collection=False):
+                 train_collection=False, sparse_data=False, stack_transformer=None):
         import numpy as np
         self.np = np
         from scipy import stats
@@ -111,30 +111,46 @@ class CatEnsemble:
             self.weights = [1.0]*self.models.num_models
         else:
             self.weights = weights
+        self.sparse = sparse_data
+        from scipy import sparse
+        self.sparse_hstack = sparse.hstack
         self.name = name
         self.ensemble_model = ensemble_model
         self.stack_data = stack_data
+        if self.stack_data==True and self.stack_transformer is None:
+            self.stack_transformer = lambda x: x
         self.use_probs = use_probs
         self.ensemble_params = dict()
-        self.stored_X = None
         self.train_collection = train_collection
+        self.stack_transformer = stack_transformer
+        if self.stack_transformer is not None:
+            self.stack_data = True
+        if ensemble_model == "mean" or ensemble_model == "mode":
+            if self.stack_data:
+                raise ValueError("Cannot stack data using 'mean' or 'mode'")
 
-    def set_ensemble_params(self, models=None, ensemble_model=None, weights=None, include_data=None, use_probs=None,
-                            train_collection=None, reset_stored=False):
+    def set_ensemble_params(self, models=None, ensemble_model=None, weights=None, stack_data=None, use_probs=None,
+                            train_collection=None, sparse_data=None, reset_stored=False, stack_transformer=None):
         if models is not None:
             self.models = models
         if ensemble_model is not None:
             self.ensemble_model = ensemble_model
         if weights is not None:
             self.weights = weights
-        if include_data is not None:
-            self.include_data = include_data
+        if stack_data is not None:
+            self.stack_data = stack_data
+            if stack_data==True and stack_transformer is None:
+                self.stack_transformer = lambda x: x
         if use_probs is not None:
             self.use_probs = use_probs
         if train_collection is not None:
             self.train_collection = train_collection
-        if reset_stored:
-            self.stored_X = None
+        if sparse_data is not None:
+            self.sparse = sparse_data
+        if stack_transformer is not None:
+            self.stack_transformer = stack_transformer
+            self.stacked_data = True
+
 
     def __mean(self, X, return_probs=False):
         #
@@ -159,29 +175,22 @@ class CatEnsemble:
             return self.stats.mode(base, axis=1)[0].flatten()
 
     def fit(self, X, y, return_preds=False):
-        if self.train_collection:
-            self.models.fit(X, y)
-            X_base = self.__base_array(X)
+        X_base = self.__base_array(X)
         if self.ensemble_model == "mean":
             if return_preds:
-                return self.__mean(X_base)
+                return self.__mean(X)
             else:
                 return None
         elif self.ensemble_model == "mode":
             if return_preds:
-                return self.__mode(X_base)
+                return self.__mode(X)
             else:
                 return None
-        if (not self.train_collection) and (self.stored_X is not None):
-            X_base = self.stored_X
-        else:
-            X_base = self.__base_array(X)
-            self.stored_X = X_base
         self.ensemble_model.fit(X_base, y)
         if return_preds:
             return self.ensemble_model.predict(X_base)
         else:
-            return self.ensemble_model
+            return self
 
     def __base_array(self, X):
         if self.use_probs:
@@ -190,7 +199,11 @@ class CatEnsemble:
             base_array = self.models.predict(X)
         base_array = base_array*self.weights
         if self.stack_data:
-            base_array = self.np.hstack((base_array, X))
+            stacked = self.stack_transformer.transform(X)
+            if self.sparse:
+                base_array = self.sparse_hstack((base_array, stacked))
+            else:
+                base_array = self.np.hstack((base_array, stacked))
         return base_array
 
     def set_params(self, skip_unknown=False, **params):
