@@ -6,9 +6,9 @@
 
 **CatEnsemble** takes a **ModelCollection** object (or the same input as one) with an additional ensemble model.  The ensemble model will train on the predicted probabilities (or just predictions) of the **ModelCollection** and make a separate prediction.  This ensemble method allows for different weighting schemes of the outputs of each model as well as stacking the original data with the predictions when training the ensemble model.  Additionally, this ensemble class allows you to pretrain the **ModelCollection** object prior to training the ensemble model or training the **ModelCollection** object *with* the ensemble model.  This allows for more efficient hyperparameter tuning (albeit much longer training and tuning times).
 
-Hyperparameters can be trained like any other scikit-learn-esque model.  When setting parameters for the ensemble model, parameters that begin with *name__* will set the hyperparameter of the *name* model in the **ModelCollection** object (similar to working with pipeline hyperparameter in scikit-learn).  Parameters that don't start with a *name__* denote hyperparameters for the ensemble model itself.
+Hyperparameters can be trained like any other scikit-learn-esque model.  When setting parameters for the ensemble model, parameters that begin with *name__* will set the hyperparameter of the *name* model in the collection or ensemble model (default name for ensemble model is "ensemble").  Parameters that start with *__name* will update the weight of the *name* model in the collection.  This allows the weighting scheme of the ensemble to be tuned with all other parameters using any scikit-learn tuning package.
 
-## Current Version is v0.01
+## Current Version is v0.02
 
 This package is currently in the beginning stages but future work is planned.
 
@@ -27,7 +27,7 @@ This package is currently in the beginning stages but future work is planned.
 	y_train = np.random.randint(0, 2, 80)
 	y_test = np.random.randint(0, 2, 20)
 	
-	models = ModelCollection(\[('log', LogisticRegression(random_state=0)),('nb', MultinomialNB())\])
+	models = ModelCollection([('log', LogisticRegression(random_state=0)),('nb', MultinomialNB())])
 	test.fit(x_train, y_train)
 	
 	ensemble = CatEnsemble(test, KNeighborsClassifier())
@@ -35,14 +35,16 @@ This package is currently in the beginning stages but future work is planned.
 	test_preds = ensemble.predict(x_test)
 	print(f"Accuracy on test set is {accuracy_score(y_test, test_preds)}"
 	
-	ens.set_params(\*\*{'log__C': 15, 'nb__alpha': 1, 'n_neighbors': 10})
+	#change the C param of the 'log' model to 15, the alpha param of the 'nb' model to 1,
+	#the n_neighbors param of the ensemble model to 10, and the weight of the 'log' model to 3  
+	ens.set_params('log__C': 15, 'nb__alpha': 1, 'ensemble__n_neighbors': 10, '__log': 3})
 	ens.fit(x_train, y_train)
 	test_preds = ensemble.predict(x_test)
 	print(f"Accuracy on test set is {accuracy_score(y_test, test_preds)}"
 	
 ## Future Plans
 
-The next step is to create an ensemble regressor model.  
+The next step is to create an ensemble regressor model.
 
 ## License
 

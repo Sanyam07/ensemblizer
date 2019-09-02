@@ -80,7 +80,7 @@ class CatEnsembleTest(unittest.TestCase):
         self.assertEqual(self.total_misclass(ens_test_preds, self.y_test), 1)  # should be 1
 
     def test_change_params_simple(self):
-        self.ens.set_params(**{'log__C': 15, 'nb__alpha': 1, 'n_neighbors': 10})
+        self.ens.set_params(**{'log__C': 15, 'nb__alpha': 1, 'ensemble__n_neighbors': 10})
         self.ens.fit(self.x_train, self.y_train)
         ens_train_preds = self.ens.predict(self.x_train)
         ens_test_preds = self.ens.predict(self.x_test)
@@ -95,7 +95,7 @@ class CatEnsembleTest(unittest.TestCase):
         self.assertEqual(self.total_misclass(ens_train_preds, self.y_train), 7)  # should be 7
         self.assertEqual(self.total_misclass(ens_test_preds, self.y_test), 1)  # should be 1
 
-        self.ens.set_params(**{'log__C': 1, 'nb__alpha': 1, 'n_neighbors': 1})
+        self.ens.set_params(**{'log__C': 1, 'nb__alpha': 1, 'ensemble__n_neighbors': 1})
         self.ens.fit(self.x_train, self.y_train)
         ens_train_preds = self.ens.predict(self.x_train)
         ens_test_preds = self.ens.predict(self.x_test)
