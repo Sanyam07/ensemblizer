@@ -175,6 +175,8 @@ class CatEnsemble:
             return self.stats.mode(base, axis=1)[0].flatten()
 
     def fit(self, X, y, return_preds=False):
+        if self.train_collection:
+            self.models.fit(X, y)
         X_base = self.__base_array(X)
         if self.ensemble_model == "mean":
             if return_preds:
