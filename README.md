@@ -17,35 +17,35 @@ This package is currently in the beginning stages but future work is planned.
 	pip install ensemblizer
 
 ## Usage
+```python
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score
+from ensemblizer import ModelCollection, CatEnsemble
 
-	import numpy as np
-	from sklearn.linear_model import LogisticRegression
-	from sklearn.naive_bayes import MultinomialNB
-	from sklearn.neighbors import KNeighborsClassifier
-	from sklearn.metrics import accuracy_score
-	from ensemblizer import ModelCollection, CatEnsemble
+np.random.seed(0)
+x_train = np.random.randint(0, 10, (80, 3))
+x_test = np.random.randint(0, 10, (20, 3))
+y_train = np.random.randint(0, 2, 80)
+y_test = np.random.randint(0, 2, 20)
 	
-	np.random.seed(0)
-	x_train = np.random.randint(0, 10, (80, 3))
-	x_test = np.random.randint(0, 10, (20, 3))
-	y_train = np.random.randint(0, 2, 80)
-	y_test = np.random.randint(0, 2, 20)
+models = ModelCollection([('log', LogisticRegression(random_state=0)),('nb', MultinomialNB())])
+test.fit(x_train, y_train)
 	
-	models = ModelCollection([('log', LogisticRegression(random_state=0)),('nb', MultinomialNB())])
-	test.fit(x_train, y_train)
+ensemble = CatEnsemble(test, KNeighborsClassifier())
+ensemble.fit(x_train, y_train)
+test_preds = ensemble.predict(x_test)
+print(f"Accuracy on test set is {accuracy_score(y_test, test_preds)}"
 	
-	ensemble = CatEnsemble(test, KNeighborsClassifier())
-	ensemble.fit(x_train, y_train)
-	test_preds = ensemble.predict(x_test)
-	print(f"Accuracy on test set is {accuracy_score(y_test, test_preds)}"
-	
-	#change the C param of the 'log' model to 15, the alpha param of the 'nb' model to 1,
-	#the n_neighbors param of the ensemble model to 10, and the weight of the 'log' model to 3  
-	ens.set_params('log__C': 15, 'nb__alpha': 1, 'ensemble__n_neighbors': 10, '__log': 3})
-	ens.fit(x_train, y_train)
-	test_preds = ensemble.predict(x_test)
-	print(f"Accuracy on test set is {accuracy_score(y_test, test_preds)}"
-	
+#change the C param of the 'log' model to 15, the alpha param of the 'nb' model to 1,
+#the n_neighbors param of the ensemble model to 10, and the weight of the 'log' model to 3  
+ens.set_params('log__C': 15, 'nb__alpha': 1, 'ensemble__n_neighbors': 10, '__log': 3})
+ens.fit(x_train, y_train)
+test_preds = ensemble.predict(x_test)
+print(f"Accuracy on test set is {accuracy_score(y_test, test_preds)}"
+```
 ## Future Plans
 
 The next step is to create an ensemble regressor model.
