@@ -1,6 +1,5 @@
 from sklearn.base import BaseEstimator, ClassifierMixin
 
-
 class ModelCollection:
 
     def __init__(self, models, **model_params):
@@ -86,7 +85,7 @@ class ModelCollection:
             names = self.name_list
         for key, name in self.tqdm(enumerate(names), disable=(not verbose)):
             index = self.name_list.index(name)
-            temp_model = self.model_list[key].fit(self.__get_X(X, key), y)
+            temp_model = self.model_list[index].fit(self.__get_X(X, key), y)
             temp_list.append(temp_model)
         self.model_list = temp_list
         return self
@@ -163,6 +162,7 @@ class ModelCollection:
         :param params: Parameter dictionary
         :return: Self
         '''
+        print("model params changed")
         self.__set_params(models)
         if params:
             params = self.__sort_params(params)
@@ -171,12 +171,14 @@ class ModelCollection:
                 self.model_list[index].set_params(**params[index])
         return self
 
-    def get_params(self, deep=True):
+    def get_params(self, deep=True, return_default=True):
         '''
 
         :return: parameters for collection
         '''
-        param_dict = {'models': self.models}
+        param_dict = dict()
+        if return_default:
+            param_dict['models'] = self.models
         for index in range(len(self.model_list)):
             temp_params = self.model_list[index].get_params(deep=deep)
             temp_dict = dict()
@@ -186,27 +188,50 @@ class ModelCollection:
             param_dict.update(temp_dict)
         return param_dict
 
-
 class CatEnsemble(BaseEstimator, ClassifierMixin):
 
-    def __init__(self, models, ensemble_model, weights=None, name="ensemble", stack_data=False, use_probs=True,
-                 deep_train=False, sparse_stack=False, metric=None, stack_transformer=None, **model_params):
+    def __init__(self, model_collection, ensemble_model, weights=None, name="ensemble", stack_data=False, use_probs=True,
+                 deep_train=False, metric=None, stack_transformer=None, **model_params):
+        '''
+        Uses a ModelCollection to make predictions from multiple models.  Uses the predictions from these other models to
+        train an ensemble model that predicts the outcome from the model collections predictions.
+
+        :param model_collection: Either a ModelCollection object or list tuples of the form ("model_name", model)
+        :param ensemble_model: Model to predict outcomes from ModelCollection object
+        :param weights: How much weight to give each model.  Is a vector of floats, where the i-th float is the
+            multiplicative weight to give the i-th model in the ModelCollection
+        :param name: String - name of ensemble_model.  Defaults to "ensemble"
+        :param stack_data: If True, concatenate ModelPredictions with the data itself before training ensemble_model
+        :param use_probs: If True, use predicted probabilities to make predictions.  If false, use ModelCollection
+            predictions to make ne predictions
+        :param deep_train:  If True, fit ModelCollection when ensemble is fit.  If False, don't.  Useful for
+            tuning ModelCollection hyperparameters concurrently with ensemble_model
+        :param metric:  Scoring metric of ensemble.  Defaults to sklearn.metrics.accuracy_score
+        :param stack_transformer:  If stack_data = True, transformer to transform input data prior to stacking.  If no
+            transformer input and stack_data = True, original data is stacked
+        :param model_params:  Parameters for the ModelCollection and ensemble_model themselves.  Formatted so that
+            "name__parameter" changes the parameters of ensemble_model and any ModelCollection formatted parameters
+            updated in the ModelCollection
+        '''
         import numpy as np
         self.np = np
         from scipy import stats
         self.stats = stats
-        if type(models) == list:
-            self.models = ModelCollection(models)
+        # Check if models is a list or ModelCollection.  Convert list to ModelCollection if necessary
+        if type(model_collection) == list:
+            self.model_collection = ModelCollection(model_collection)
         else:
-            self.models = models
+            self.model_collection = model_collection
+        # if no weights input, set all weights to 1.0
         if weights is None:
-            self.weights = [1.0] * self.models.num_models
+            self.weights = [1.0] * self.model_collection.num_models
         else:
             self.weights = weights
-        self.sparse_stack = sparse_stack
         from scipy import sparse
+        self.is_sparse = sparse.issparse
         self.sparse_hstack = sparse.hstack
         self.name = name
+        # if no metric given, set metric equal to accuracy_score
         if metric:
             self.metric = metric
         else:
@@ -214,12 +239,13 @@ class CatEnsemble(BaseEstimator, ClassifierMixin):
             self.metric = accuracy_score
         self.ensemble_model = ensemble_model
         self.stack_data = stack_data
+        # if stack_data is True but not transformer given, set the transformer equal to identity function
         if self.stack_data == True and self.stack_transformer is None:
-            self.stack_transformer = lambda x: x
+            self.stack_transformer = self.identity
         self.use_probs = use_probs
-        self._estimator_type = "classifier"
         self.deep_train = deep_train
         self.stack_transformer = stack_transformer
+        # if a stack transformer is given, set stack_data to True
         if self.stack_transformer is not None:
             self.stack_data = True
         if ensemble_model == "mean" or ensemble_model == "mode":
@@ -227,10 +253,14 @@ class CatEnsemble(BaseEstimator, ClassifierMixin):
                 raise ValueError("Cannot stack data using 'mean' or 'mode'")
         self.set_params(**model_params)
 
-    def change_ensemble_params(self, models=None, ensemble_model=None, weights=None, stack_data=None, use_probs=None,
-                               deep_train=None, sparse_stack=None, metric=None, stack_transformer=None):
-        if models is not None:
-            self.models = models
+    def identity(self, x):
+        return x
+
+    def __change_ensemble_params(self, model_collection, ensemble_model, weights, stack_data, use_probs, deep_train, metric,
+                                 stack_transformer):
+        # simply checks for non-ModelCollection and non-ensemble_model parameter changes and changes them
+        if model_collection is not None:
+            self.model_collection = model_collection
         if ensemble_model is not None:
             self.ensemble_model = ensemble_model
         if weights is not None:
@@ -243,8 +273,6 @@ class CatEnsemble(BaseEstimator, ClassifierMixin):
             self.use_probs = use_probs
         if deep_train is not None:
             self.deep_train = deep_train
-        if sparse_stack is not None:
-            self.sparse_stack = sparse_stack
         if metric is not None:
             self.metric = metric
         if stack_transformer is not None:
@@ -254,6 +282,8 @@ class CatEnsemble(BaseEstimator, ClassifierMixin):
     def __mean(self, X, return_probs=False):
         #
         # currently only set up to work with binary classification problems
+        #
+        # calculates the weighted mean of each ModelCollection model predicted probability
         #
         total_weights = self.np.sum(self.weights)
         X = self.__base_array(X)
@@ -267,15 +297,24 @@ class CatEnsemble(BaseEstimator, ClassifierMixin):
         #
         # currently only set up to work with binary classification problems
         #
-        base = self.models.predict(X)
+        # calculates the mode of each ModelCollection model predictions
+        #
+        base = self.model_collection.predict(X)
         if return_probs:
             return self.np.mean(base, axis=1)
         else:
             return self.stats.mode(base, axis=1)[0].flatten()
 
     def fit(self, X, y, return_preds=False):
+        '''
+
+        :param X: input data to fit
+        :param y: labels to fit
+        :param return_preds: if True, returns predictions from X instead of self
+        :return: self or predictions
+        '''
         if self.deep_train:
-            self.models.fit(X, y)
+            self.model_collection.fit(X, y)
         X_base = self.__base_array(X)
         if self.ensemble_model == "mean":
             if return_preds:
@@ -288,30 +327,36 @@ class CatEnsemble(BaseEstimator, ClassifierMixin):
             else:
                 return None
         self.ensemble_model.fit(X_base, y)
-        self.estimator_ = self
         if return_preds:
             return self.ensemble_model.predict(X_base)
         else:
             return self
 
     def __base_array(self, X):
+        '''
+
+        :param X: input data
+        :return: the predictions/predicted probabilities from the ModelCollection object after weights have been applied
+            and X is concatenated (if self.stack_data = True)
+        '''
         if self.use_probs:
-            base_array = self.models.predict_proba(X)
+            base_array = self.model_collection.predict_proba(X)
         else:
-            base_array = self.models.predict(X)
+            base_array = self.model_collection.predict(X)
         base_array = base_array * self.weights
         if self.stack_data:
             stacked = self.stack_transformer.transform(X)
-            if self.sparse_stack:
+            if self.is_sparse(stacked):
                 base_array = self.sparse_hstack((base_array, stacked))
             else:
                 base_array = self.np.hstack((base_array, stacked))
         return base_array
 
-    def set_params(self, models=None, ensemble_model=None, weights=None, stack_data=None,
-                   use_probs=None, deep_train=None, sparse_stack=None, metric=None, stack_transformer=None, **params):
-        self.change_ensemble_params(models, ensemble_model, weights, stack_data, use_probs, deep_train,
-                                    sparse_stack, metric, stack_transformer)
+    def set_params(self, model_collection=None, ensemble_model=None, weights=None, stack_data=None,use_probs=None,
+                   deep_train=None, metric=None, stack_transformer=None, **params):
+        # sets parameters
+        self.__change_ensemble_params(model_collection, ensemble_model, weights, stack_data, use_probs, deep_train,
+                                    metric, stack_transformer)
         collection_dict = dict()
         ensemble_dict = dict()
         for key, value in params.items():
@@ -319,32 +364,35 @@ class CatEnsemble(BaseEstimator, ClassifierMixin):
             if split[0] == self.name:
                 ensemble_dict["__".join(split[1:])] = value
             else:
-                if split[0] == "":
-                    self.weights[self.models.model_index(split[1])] = value
-                else:
-                    param_name = "__".join(split)
-                    collection_dict[param_name] = value
-        self.models.set_params(**collection_dict)
-        if (self.ensemble_model != "mean") and (self.ensemble_model != "mode"):
+                collection_dict[key] = value
+        # if deep_train, sets parameters of ModelCollection object as well.
+        if self.deep_train:
+            self.model_collection.set_params(**collection_dict)
+        # as long as ensemble_model isn't MEAN or MODE, changes parameters of ensemble_model
+        if (self.ensemble_model != "mean") and (self.ensemble_model != "mode") and ensemble_dict:
             self.ensemble_model.set_params(**ensemble_dict)
         return self
 
     def get_params(self, deep=True):
-        param_dict = {'models': self.models, 'ensemble_model': self.ensemble_model, 'weights': self.weights,
+        # returns the parameters of the model
+        param_dict = {'model_collection': self.model_collection, 'ensemble_model': self.ensemble_model, 'weights': self.weights,
                       'stack_data': self.stack_data, 'use_probs': self.use_probs, 'deep_train': self.deep_train,
-                      'sparse_stack': self.sparse_stack, 'metric': self.metric,
-                      'stack_transformer': self.stack_transformer}
+                      'metric': self.metric, 'stack_transformer': self.stack_transformer}
         temp_params = self.ensemble_model.get_params(deep=deep)
         for key, value in temp_params.items():
             param_name = self.name + "__" + key
             param_dict[param_name] = value
-        for index in range(len(self.weights)):
-            name = "__" + self.models.name_list[index]
-            param_dict[name] = self.weights[index]
-        param_dict.update(self.models.get_params(deep=deep))
+        # if deep_train = True, also retrieve parameters of ModelCollection
+        if self.deep_train:
+            param_dict.update(self.model_collection.get_params(deep=deep, return_default=False))
         return param_dict
 
     def predict(self, X):
+        '''
+
+        :param X: input data
+        :return: label predictions for X
+        '''
         if self.ensemble_model == "mean":
             return self.__mean(X)
         elif self.ensemble_model == "mode":
@@ -353,9 +401,15 @@ class CatEnsemble(BaseEstimator, ClassifierMixin):
         return self.ensemble_model.predict(X_base)
 
     def score(self, X, y):
+        # scoring functions used is simply self.metrix
         return self.metric(self.predict(X), y)
 
     def predict_proba(self, X):
+        '''
+
+        :param X: input data
+        :return: predicted probabilities for label predictions for X
+        '''
         if self.ensemble_model == "mean":
             return self.__mean(X, return_probs=True)
         elif self.ensemble_model == "mode":

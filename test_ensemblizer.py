@@ -88,7 +88,7 @@ class CatEnsembleTest(unittest.TestCase):
         self.assertEqual(self.total_misclass(ens_test_preds, self.y_test), 0)  # should be 0
 
     def test_change_collection_change_params(self):
-        self.ens.set_ensemble_params(train_collection=True)
+        self.ens.set_params(deep_train=True)
         self.ens.fit(self.x_train, self.y_train)
         ens_train_preds = self.ens.predict(self.x_train)
         ens_test_preds = self.ens.predict(self.x_test)
@@ -101,6 +101,29 @@ class CatEnsembleTest(unittest.TestCase):
         ens_test_preds = self.ens.predict(self.x_test)
         self.assertEqual(self.total_misclass(ens_train_preds, self.y_train), 2)  # should be 2
         self.assertEqual(self.total_misclass(ens_test_preds, self.y_test), 4)  # should be 4
+
+    def test_shallow_grid(self):
+        from sklearn.model_selection import GridSearchCV
+        from sklearn.exceptions import NotFittedError
+        self.ens.set_params(deep_train=False)
+        self.GridSearchCV = GridSearchCV
+        params = {'ensemble__n_neighbors': [2, 3, 5]}
+        search = self.GridSearchCV(self.ens, params)
+        try:
+            search.fit(self.x_train, self.y_train)
+        except NotFittedError:
+            self.fail("Not scikit-learn shallow search compatible")
+
+    def test_deep_grid(self):
+        from sklearn.exceptions import NotFittedError
+        self.ens.set_params(deep_train=True)
+        params = {'ensemble__n_neighbors': [2, 3, 5],
+                  'log__C': [1, 10, 100]}
+        search = self.GridSearchCV(self.ens, params)
+        try:
+            search.fit(self.x_train, self.y_train)
+        except NotFittedError:
+            self.fail("Not scikit-learn deep search compatible")
 
 if __name__=='__main__':
     unittest.main()

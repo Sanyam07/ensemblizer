@@ -46,6 +46,10 @@ This package is currently in the beginning stages but future work is planned.
 	test_preds = ensemble.predict(x_test)
 	print(f"Accuracy on test set is {accuracy_score(y_test, test_preds)}"
 	
+## Known Bugs
+
+A major known bug right now is that CatEnsemble only works with scikit-learn's GridSearchCV and RandomizedSearchCV with deep_train=True.  This is due to the way that scikit-learn copies estimators before resetting parameters for each parameter combination.  This causes the models stored in the ModelCollection object to reset to untrained status.  I am currently working on refactoring the class to be completely compatible.  It is currently compatible with all tuneRs.
+	
 ## Future Plans
 
 The next step is to create an ensemble regressor model.
